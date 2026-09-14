@@ -5,6 +5,12 @@
 #include "kernel/fcntl.h"
 #include "kernel/stat.h"
 
+#define HISTORY_SIZE 10
+#define HISTORY_CMD_SIZE 128
+
+char history[HISTORY_SIZE][HISTORY_CMD_SIZE];
+int history_count = 0;
+
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
@@ -242,6 +248,34 @@ getcmd(char *buf, int nbuf)
   return 0;
 }
 
+void
+add_history(char *cmd)
+{
+  int i;
+
+  if (cmd[0] == '\0')
+    return;
+
+  if (history_count < HISTORY_SIZE) {
+    strcpy(history[history_count], cmd);
+    history_count++;
+    return;
+  }
+
+  for (i = 1; i < HISTORY_SIZE; i++)
+    strcpy(history[i - 1], history[i]);
+
+  strcpy(history[HISTORY_SIZE - 1], cmd);
+}
+
+void
+print_history(void)
+{
+  int i;
+
+  for (i = 0; i < history_count; i++)
+    printf("%d %s", i + 1, history[i]);
+}
 
 int
 main(void)
@@ -260,26 +294,40 @@ main(void)
   // Read and run input commands.
   while (getcmd(buf, sizeof(buf)) >= 0) {
     char *cmd = buf;
+
     while (*cmd == ' ' || *cmd == '\t')
       cmd++;
-    if (*cmd == '\n') // is a blank command
+
+    if (*cmd == '\n')
       continue;
+
     if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd) - 1] = 0; // chop \n
+      cmd[strlen(cmd) - 1] = 0;
+
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
+
+      add_history(cmd);
     } else if (strcmp(cmd, "wait\n") == 0) {
+      add_history(cmd);
       wait(0);
+    } else if (strcmp(cmd, "history\n") == 0) {
+      print_history();
+      add_history(cmd);
     } else {
+      add_history(cmd);
+
       if (fork1() == 0)
         runcmd(parsecmd(cmd));
+
       wait(0);
     }
   }
+
   exit(0);
 }
 
+ 
 void
 panic(char *s)
 {
@@ -600,3 +648,5 @@ nulterminate(struct cmd *cmd)
   }
   return cmd;
 }
+
+
