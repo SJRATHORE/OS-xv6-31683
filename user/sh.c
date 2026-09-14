@@ -1,10 +1,9 @@
 // Shell.
-
 #include "kernel/types.h"
+#include "kernel/fs.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
 #include "kernel/stat.h"
-
 
 // Parsed command representation
 #define EXEC  1
@@ -133,20 +132,116 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
+void
+tabcomplete(char *buf)
+{
+  int fd;
+  int i;
+  int len;
+  int prefixlen;
+  int matchlen;
+  struct dirent de;
+  char *p;
+
+  len = strlen(buf);
+
+  if (len == 0)
+    return;
+
+  p = buf + len - 1;
+
+  while (p >= buf && *p != ' ' && *p != '\t')
+    p--;
+
+  p++;
+
+  if (*p == '\0')
+    return;
+
+  prefixlen = strlen(p);
+
+  if ((fd = open(".", O_RDONLY)) < 0)
+    return;
+
+  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+    if (de.inum == 0)
+      continue;
+
+    if (de.name[0] == '.' && de.name[1] == '\0')
+      continue;
+
+    if (de.name[0] == '.' && de.name[1] == '.')
+      continue;
+
+    for (i = 0; i < prefixlen; i++) {
+      if (de.name[i] != p[i])
+        break;
+    }
+
+    if (i != prefixlen)
+      continue;
+
+    matchlen = strlen(de.name);
+
+    if (matchlen <= prefixlen)
+      continue;
+
+    // Print only the part that is missing.
+    for (i = prefixlen; i < matchlen; i++)
+      write(2, &de.name[i], 1);
+
+    // Add only the missing part to the command buffer.
+    for (i = prefixlen; i < matchlen; i++)
+      buf[len + i - prefixlen] = de.name[i];
+
+    buf[len + matchlen - prefixlen] = '\0';
+
+    break;
+  }
+
+  close(fd);
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
   struct stat st;
+  int i;
+  int cc;
+  char c;
 
   if (fstat(0, &st) >= 0 && st.type == T_DEVICE)
     write(2, "$ ", 2);
 
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if (buf[0] == 0) // EOF
+
+  for (i = 0; i + 1 < nbuf;) {
+    cc = read(0, &c, 1);
+
+    if (cc < 1)
+      break;
+
+    if (c == '\t') {
+      buf[i] = '\0';
+      tabcomplete(buf);
+      i = strlen(buf);
+      continue;
+    }
+
+    buf[i++] = c;
+
+    if (c == '\n' || c == '\r')
+      break;
+  }
+
+  buf[i] = '\0';
+
+  if (buf[0] == 0)
     return -1;
+
   return 0;
 }
+
 
 int
 main(void)
