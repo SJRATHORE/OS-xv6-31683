@@ -1,0 +1,37 @@
+Sudheer Rahore 31683
+
+1. Which function called syscall()?
+
+   The function usertrap() called syscall().
+
+2. What is the value of p->trapframe->a7 and what does it mean?
+
+   p->trapframe->a7 = 0xf (15 in decimal)
+   The a7 register contains the system call number. In this case, 15 corresponds to the open system call.
+
+3. What was the previous mode of the CPU?
+
+   $sstatus = 0x200000022. The SPP bit (bit 8) is 0, which means the CPU was previously running in User mode.
+
+4. What happened when num was changed to *(int*)0?
+
+   The kernel crashed with:
+
+   scause = 0xd
+   sepc = 0x80001d62
+   stval = 0x0
+
+	 scause = 0xd means a Load Page Fault occurred.
+	sepc = 0x80001d62 is the address of the instruction that caused the fault.
+	stval = 0x0 means the faulting memory address was 0.
+
+ Looking up sepc in kernel/kernel.asm gives:
+
+   80001d62: lw a3,0(zero)
+
+   This instruction attempts to load a 32-bit value from memory address 0. The zero register (x0) always contains 0, so 0(zero) refers to address 0. The loaded value would have been placed in register a3.
+   Since address 0 is not mapped, the load caused a page fault. xv6 then entered kerneltrap() and panicked.
+
+5. What process was running when the kernel crashed? What was its pid?
+
+   The process was init, with PID 1.
